@@ -8,13 +8,15 @@ pygame.init()
 # Set up the display
 screen_width, screen_height = 800, 600
 screen = pygame.display.set_mode((screen_width, screen_height))
-pygame.display.set_caption("Random Terrain Generator")
+pygame.display.set_caption("Random Terrain Generator with Player & Monsters")
 
 # Define colors
 GREEN = (34, 139, 34)  # Forest Green (for grass)
 BLUE = (65, 105, 225)  # Royal Blue (for river)
 BROWN = (139, 69, 19)  # Saddle Brown (for trees)
 GRAY = (128, 128, 128)  # Gray (for rocks)
+RED = (255, 0, 0)      # Red (for player)
+BLACK = (0, 0, 0)      # Black (for monsters)
 
 # Tile size
 TILE_SIZE = 40
@@ -27,6 +29,21 @@ grid_height = screen_height // TILE_SIZE
 RIVER_CHANCE = 0.1  # Chance of starting a river at any edge tile
 ROCK_CHANCE = 0.05  # Chance of placing a rock on a grass tile
 TREE_CHANCE = 0.15  # Chance of placing a tree on a grass tile
+
+# Player settings
+player_radius = 15
+player_speed = 5
+player_x = screen_width // 2
+player_y = screen_height // 2
+
+# Monster settings
+monster_size = 20
+monster_speed = 2
+num_monsters = 10
+monsters = []
+
+# Game state
+game_over = False
 
 def generate_terrain():
     # Initialize grid with grass
@@ -116,24 +133,132 @@ def draw_terrain(grid):
                 # Tree top (circle)
                 pygame.draw.circle(screen, (0, 100, 0), (pos_x + TILE_SIZE//2, pos_y + TILE_SIZE//3), TILE_SIZE//3)
 
+def initialize_monsters():
+    monsters = []
+    for _ in range(num_monsters):
+        # Place monsters at random positions
+        monster_x = random.randint(0, screen_width - monster_size)
+        monster_y = random.randint(0, screen_height - monster_size)
+        
+        # Random initial movement direction
+        dx = random.choice([-1, 0, 1]) * monster_speed
+        dy = random.choice([-1, 0, 1]) * monster_speed
+        if dx == 0 and dy == 0:  # Ensure monster moves
+            dx = monster_speed
+        
+        monsters.append({
+            'x': monster_x,
+            'y': monster_y,
+            'dx': dx,
+            'dy': dy
+        })
+    return monsters
+
+def move_monsters():
+    for monster in monsters:
+        # Randomly change direction occasionally
+        if random.random() < 0.05:
+            monster['dx'] = random.choice([-1, 0, 1]) * monster_speed
+            monster['dy'] = random.choice([-1, 0, 1]) * monster_speed
+            if monster['dx'] == 0 and monster['dy'] == 0:
+                monster['dx'] = monster_speed  # Ensure monster moves
+        
+        # Move monster
+        monster['x'] += monster['dx']
+        monster['y'] += monster['dy']
+        
+        # Bounce off screen edges
+        if monster['x'] < 0 or monster['x'] > screen_width - monster_size:
+            monster['dx'] *= -1
+            monster['x'] = max(0, min(monster['x'], screen_width - monster_size))
+        if monster['y'] < 0 or monster['y'] > screen_height - monster_size:
+            monster['dy'] *= -1
+            monster['y'] = max(0, min(monster['y'], screen_height - monster_size))
+
+def draw_monsters():
+    for monster in monsters:
+        pygame.draw.rect(screen, BLACK, (monster['x'], monster['y'], monster_size, monster_size))
+
+def check_collisions():
+    player_rect = pygame.Rect(player_x - player_radius, player_y - player_radius, 
+                              player_radius * 2, player_radius * 2)
+    
+    for monster in monsters:
+        monster_rect = pygame.Rect(monster['x'], monster['y'], monster_size, monster_size)
+        if player_rect.colliderect(monster_rect):
+            return True
+    
+    return False
+
+def draw_game_over():
+    font = pygame.font.SysFont(None, 72)
+    text = font.render("Game Over!", True, (255, 0, 0))
+    text_rect = text.get_rect(center=(screen_width//2, screen_height//2))
+    screen.blit(text, text_rect)
+    
+    # Additional instructions for restarting
+    restart_font = pygame.font.SysFont(None, 36)
+    restart_text = restart_font.render("Press R to restart", True, (255, 255, 255))
+    restart_rect = restart_text.get_rect(center=(screen_width//2, screen_height//2 + 50))
+    screen.blit(restart_text, restart_rect)
+
+def reset_game():
+    global player_x, player_y, monsters, terrain, game_over
+    player_x = screen_width // 2
+    player_y = screen_height // 2
+    terrain = generate_terrain()
+    monsters = initialize_monsters()
+    game_over = False
+
 # Generate initial terrain
 terrain = generate_terrain()
 
+# Initialize monsters
+monsters = initialize_monsters()
+
 # Font for instructions
 font = pygame.font.SysFont(None, 24)
-instruction_text = font.render("Press SPACE to generate new terrain", True, (255, 255, 255))
+instruction_text = font.render("WASD to move, SPACE for new terrain, R to restart", True, (255, 255, 255))
 
 # Game loop
 running = True
+clock = pygame.time.Clock()
+
 while running:
     # Event handling
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
+            if event.key == pygame.K_SPACE and not game_over:
                 # Generate new terrain when SPACE is pressed
                 terrain = generate_terrain()
+            if event.key == pygame.K_r and game_over:
+                # Restart the game
+                reset_game()
+    
+    if not game_over:
+        # Player movement using WASD
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_w]:
+            player_y -= player_speed
+        if keys[pygame.K_s]:
+            player_y += player_speed
+        if keys[pygame.K_a]:
+            player_x -= player_speed
+        if keys[pygame.K_d]:
+            player_x += player_speed
+        
+        # Keep player within screen bounds
+        player_x = max(player_radius, min(player_x, screen_width - player_radius))
+        player_y = max(player_radius, min(player_y, screen_height - player_radius))
+        
+        # Move monsters
+        move_monsters()
+        
+        # Check for collisions
+        if check_collisions():
+            game_over = True
     
     # Fill the screen
     screen.fill((0, 0, 0))  # Start with black
@@ -141,14 +266,24 @@ while running:
     # Draw the terrain
     draw_terrain(terrain)
     
+    # Draw monsters
+    draw_monsters()
+    
+    # Draw player (red circle)
+    pygame.draw.circle(screen, RED, (player_x, player_y), player_radius)
+    
     # Draw instructions
     screen.blit(instruction_text, (10, 10))
+    
+    # Draw game over message if game is over
+    if game_over:
+        draw_game_over()
     
     # Update the display
     pygame.display.flip()
     
     # Control the game speed
-    pygame.time.Clock().tick(60)  # 60 frames per second
+    clock.tick(60)  # 60 frames per second
 
 # Quit Pygame
 pygame.quit()
